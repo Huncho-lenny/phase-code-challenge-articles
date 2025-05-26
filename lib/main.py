@@ -1,46 +1,24 @@
-#!/usr/bin/env python
-from lib.db.connection import get_connection
-from lib.models import Author, Article, Magazine
-from lib.db.seed import seed_database
-from lib.db.schema import create_tables
+from models.author import Author
+from models.article import Article
+from models.magazine import Magazine
+from database.connection import get_db_connection
 
-def initialize_database():
-    """Initialize database schema and seed data"""
-    with get_connection() as conn:
-        create_tables(conn)
-        seed_database(conn)
+def main():
+    conn = get_db_connection()
 
-def example_usage():
-    """Demonstrate core functionality"""
-    # Create test data
-    author1 = Author("Jane Austen").save()
-    author2 = Author("Charles Dickens").save()
-    
-    magazine1 = Magazine("Literary Review", "Classics").save()
-    magazine2 = Magazine("Modern Writers", "Contemporary").save()
+    author1 = Author(name="Figwan Ting")
+    magazine1 = Magazine(name="Tech Flex", category="Technology")
+    article1 = Article(title="The Rise of AI", content="AI is changing everything.", author_id=author1.id, magazine_id=magazine1.id)
 
-    # Add articles
-    author1.add_article(magazine1, "Pride and Prejudice Analysis")
-    author1.add_article(magazine2, "Modern Classics")
-    author2.add_article(magazine1, "Great Expectations Review")
+    author1.save()
+    magazine1.save()
+    article1.save()
 
-    # Query examples
-    print("\nAll articles by Jane Austen:")
+    print(f"Articles by {author1.name}:")
     for article in author1.articles():
         print(f"- {article.title}")
 
-    print("\nMagazines Charles Dickens writes for:")
-    for magazine in author2.magazines():
-        print(f"- {magazine.name} ({magazine.category})")
-
-    print("\nContributors to Literary Review:")
-    magazine = Magazine.find_by_name("Literary Review")
-    for author in magazine.contributors():
-        print(f"- {author.name}")
-
-def main():
-    initialize_database()
-    example_usage()
+    conn.close()
 
 if __name__ == "__main__":
     main()
