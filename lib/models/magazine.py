@@ -1,42 +1,90 @@
-from .base_model import BaseModel
+from lib.db.connection import get_connection
 
-class Magazine(BaseModel):
-    def __init__(self, name, category):
-        self._validate(name, category)
-        self.name = name.strip()
-        self.category = category.strip()
-        self.id = None
+class Magazine:
+    def __init__(self, name, category, id = None):
+      self.id = id
+      self.name = name
+      self.category = category
+    
+    def save (self):
+       conn = get_connection()
+       cursor = conn.cursor()
 
-    def _validate(self, name, category):
-        if not isinstance(name, str) or len(name.strip()) < 2:
-            raise ValueError("Name must be at least 2 characters")
-        if not isinstance(category, str) or len(category.strip()) == 0:
-            raise ValueError("Category must be a non-empty string")
+       if self.id:
+          cursor.execute(
+             "UPDATE magazines SET name = ? category = ? WHERE id = ?",
+                (self.name, self.category, self.id)
+          )
 
-    def save(self):
-        query = """
-            INSERT INTO magazines (name, category) 
-            VALUES (?, ?) 
-            RETURNING id
-        """
-        result = self._execute(query, (self.name, self.category), fetch=True)
-        self.id = result[0][0]
-        return self
+       else:
+          cursor.execute(
+              "INSERT INTO magazines (name, category) VALUES (?, ?)",
+                (self.name, self.category)
+            )
+       self.id = cursor.lastrowid
+
+       conn.commit()
+       conn.close()
 
     def articles(self):
-        query = "SELECT * FROM articles WHERE magazine_id = ?"
-        return [self._create_instance(row) for row in self._execute(query, (self.id,), fetch=True)]
+        """Returns all articles in this magazine"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM articles WHERE magazine_id = ?",
+            (self.id,)
+        )
+        articles = cursor.fetchall()
+        conn.close()
+        return articles
 
-    def contributors(self):
-        query = """
-            SELECT DISTINCT authors.* FROM authors
-            JOIN articles ON authors.id = articles.author_id
-            WHERE articles.magazine_id = ?
-        """
-        return [self._create_instance(row) for row in self._execute(query, (self.id,), fetch=True)]
+    def contributing_authors(self):
+        """Returns authors with >2 articles (Deliverable requirement)"""
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT authors.* FROM authors
+                JOIN articles ON authors.id=articles.author_id
+                WHERE articles.magazine_id=?
+                GROUP BY authors.id
+                HAVING COUNT(articles.id) > 2""",
+                (self.id,)
+            )
+            return cursor.fetchall()
+        finally:
+            conn.close()
 
     @classmethod
-    def find_by_category(cls, category):
-        query = "SELECT * FROM magazines WHERE category = ?"
-        results = cls._execute(query, (category,), fetch=True)
-        return [cls._create_instance(row) for row in results]
+    def find_by_id(cls, id):
+        """Finds magazine by ID"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM magazines WHERE id = ?",
+            (id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return cls(**row) if row else None
+    @classmethod
+    def find_by_name(cls, name):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM magazines WHERE name = ?", (name,))
+        row = cursor.fetchone()
+        conn.close()
+        return cls(**row) if row else None
+
+
+    @classmethod
+    def all(cls):
+        """Returns all magazines"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM magazines")
+        magazines = [cls(**row) for row in cursor.fetchall()]
+        conn.close()
+        return magazines
+
+    ...

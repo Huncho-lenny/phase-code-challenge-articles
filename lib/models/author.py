@@ -1,41 +1,87 @@
-from .base_model import BaseModel
+from lib.db.connection import get_connection
 
-class Author(BaseModel):
-    def __init__(self, name):
-        if not isinstance(name, str) or len(name.strip()) == 0:
-            raise ValueError("Author name must be a non-empty string")
-        self.name = name.strip()
-        self.id = None
+class Author:
+    def __init__(self, name, id = None):
+      self.id = id
+      self.name = name
+    
+    def save (self):
+       conn = get_connection()
+       cursor = conn.cursor()
 
-    def save(self):
-        if self.id is None:
-            query = "INSERT INTO authors (name) VALUES (?) RETURNING id"
-            result = self._execute(query, (self.name,), fetch=True)
-            self.id = result[0][0]
-        return self
+       if self.id:
+          cursor.execute(
+             "UPDATE authors SET name = ? WHERE id = ?",
+                (self.name, self.id)
+          )
 
-    @classmethod
-    def find_by_id(cls, author_id):
-        query = "SELECT * FROM authors WHERE id = ?"
-        result = cls._execute(query, (author_id,), fetch=True)
-        return cls._create_instance(result[0]) if result else None
+       else:
+          cursor.execute(
+              "INSERT INTO authors (name) VALUES (?)",
+                (self.name,)
+            )
+       self.id = cursor.lastrowid
+
+       conn.commit()
+       conn.close()
 
     def articles(self):
-        query = """
-            SELECT * FROM articles 
-            WHERE author_id = ?
-            ORDER BY id DESC
-        """
-        return [self._create_instance(row) for row in self._execute(query, (self.id,), fetch=True)]
-
+       """Returns all articles by this author"""
+       conn = get_connection()
+       cursor = conn.cursor()
+       cursor.execute(
+            "SELECT * FROM articles WHERE author_id = ?",
+            (self.id,)
+        )
+       articles = cursor.fetchall()
+       conn.close()
+       return articles
+    
     def magazines(self):
-        query = """
-            SELECT DISTINCT magazines.* FROM magazines
+        """Returns unique magazines this author has written for"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT DISTINCT magazines.* FROM magazines
             JOIN articles ON magazines.id = articles.magazine_id
-            WHERE articles.author_id = ?
-        """
-        return [self._create_instance(row) for row in self._execute(query, (self.id,), fetch=True)]
+            WHERE articles.author_id = ?""",
+            (self.id,)
+        )
+        magazines = cursor.fetchall()
+        conn.close()
+        return magazines
+    
+    @classmethod
+    def find_by_id(cls, id):
+        """Finds author by ID"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM authors WHERE id = ?",
+            (id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return cls(**row) if row else None
+    
+    @classmethod
+    def find_by_name(cls, name):
+       conn = get_connection()
+       cursor = conn.cursor()
+       cursor.execute("SELECT * FROM authors WHERE name = ?", (name,))
+       row = cursor.fetchone()
+       conn.close()
+       return cls(**row) if row else None
 
-    def add_article(self, magazine, title):
-        from .article import Article  # Avoid circular import
-        return Article(title, self.id, magazine.id).save()
+
+    @classmethod
+    def all(cls):
+        """Returns all authors"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM authors")
+        authors = [cls(**row) for row in cursor.fetchall()]
+        conn.close()
+        return authors
+    
+          

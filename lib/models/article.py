@@ -1,33 +1,76 @@
-from .base_model import BaseModel
+from lib.db.connection import get_connection
 
-class Article(BaseModel):
-    def __init__(self, title, author_id, magazine_id):
-        self._validate(title)
-        self.title = title.strip()
-        self.author_id = author_id
-        self.magazine_id = magazine_id
-        self.id = None
+class Article:
+    def __init__(self, title, magazine_id, author_id, id = None):
+      self.id = id
+      self.title = title
+      self.magazine_id = magazine_id
+      self.author_id = author_id
+    
+    def save (self):
+       conn = get_connection()
+       cursor = conn.cursor()
 
-    def _validate(self, title):
-        if not isinstance(title, str) or len(title.strip()) < 5:
-            raise ValueError("Title must be at least 5 characters")
+       if self.id:
+          cursor.execute(
+            cursor.execute(
+             "UPDATE articles SET title = ?, magazine_id = ?, author_id = ? WHERE id = ?",
+                (self.title, self.magazine_id, self.author_id, self.id)
+)
 
-    def save(self):
-        query = """
-            INSERT INTO articles (title, author_id, magazine_id)
-            VALUES (?, ?, ?)
-            RETURNING id
-        """
-        result = self._execute(
-            query, 
-            (self.title, self.author_id, self.magazine_id),
-            fetch=True
-        )
-        self.id = result[0][0]
-        return self
+          )
+
+       else:
+          cursor.execute(
+              "INSERT INTO articles (title, magazine_id, author_id) VALUES (?, ?, ?)",
+                (self.title, self.magazine_id, self.author_id)
+            )
+       self.id = cursor.lastrowid
+
+       conn.commit()
+       conn.close()
 
     @classmethod
-    def find_by_author(cls, author_id):
-        query = "SELECT * FROM articles WHERE author_id = ?"
-        results = cls._execute(query, (author_id,), fetch=True)
-        return [cls._create_instance(row) for row in results]
+    def find_by_id(cls, id):
+        """Finds article by ID"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM articles WHERE id = ?",
+            (id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return cls(**row) if row else None
+    
+    @classmethod
+    def find_by_title(cls, title):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM articles WHERE title = ?", (title,))
+        row = cursor.fetchone()
+        conn.close()
+        return cls(**row) if row else None
+   
+
+    @classmethod
+    def all(cls):
+        """Returns all articles"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM articles")
+        articles = [cls(**row) for row in cursor.fetchall()]
+        conn.close()
+        return articles
+
+    def author(self):
+        """Returns the author of this article"""
+        from .author import Author  # Avoid circular imports
+        return Author.find_by_id(self.author_id)
+
+    def magazine(self):
+        """Returns the magazine of this article"""
+        from .magazine import Magazine
+        return Magazine.find_by_id(self.magazine_id)
+
+    ...
